@@ -25,8 +25,11 @@ jobs:
       - name: Build arm64e
         run: |
           set -eo pipefail
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          if ! command -v ldid >/dev/null 2>&1; then brew install ldid; fi
           export THEOS="$HOME/theos"
-          export PATH="$THEOS/bin:$PATH"
+          export PATH="/opt/homebrew/bin:$THEOS/bin:$PATH"
+          ldid -v || true
           make clean || true
           make package FINALPACKAGE=1 ARCHS=arm64e TARGET=iphone:clang:latest:14.0
           ls -l packages
@@ -36,17 +39,43 @@ jobs:
           set -eo pipefail
           DEB=$(ls packages/*.deb | head -1)
           echo "DEB=$DEB"
-          mkdir -p "$RUNNER_TEMP/debx" && cd "$RUNNER_TEMP/debx"
-          ar x "$GITHUB_WORKSPACE/$DEB"
-          tar -xf control.tar.* -C . 2>/dev/null || true
-          cat control 2>/dev/null || true
-          mkdir -p data && tar -xf data.tar.* -C data
-          find data -type f | sort
-          DYLIB=$(find data -name '*.dylib' | head -1)
-          xcrun lipo -info "$DYLIB"
-          xcrun vtool -show-build "$DYLIB" | head -20
-          xcrun codesign -dvvv "$DYLIB" 2>&1 | head -20 || true
           shasum -a 256 "$GITHUB_WORKSPACE/$DEB"
+          python3 - "$GITHUB_WORKSPACE/$DEB" <<'PY'
+          import sys, io, os, tarfile, subprocess
+          deb = sys.argv[1]
+          data = open(deb, 'rb').read()
+          assert data[:8] == b'!<arch>\n', 'not an ar archive'
+          pos, members = 8, {}
+          while pos + 60 <= len(data):
+              hdr = data[pos:pos+60]
+              name = hdr[0:16].decode().strip()
+              size = int(hdr[48:58].decode().strip())
+              body = data[pos+60:pos+60+size]
+              members[name.rstrip('/')] = body
+              pos += 60 + size + (size & 1)
+          print('members:', list(members))
+          out = os.path.join(os.environ['RUNNER_TEMP'], 'debx')
+          os.makedirs(out, exist_ok=True)
+          ctrl = members['control.tar.gz'] if 'control.tar.gz' in members else members['control.tar.xz']
+          open(os.path.join(out, 'control.tar'), 'wb').write(ctrl)
+          with tarfile.open(os.path.join(out, 'control.tar'), 'r:*') as t:
+              t.extractall(out)
+          print(open(os.path.join(out, 'control')).read())
+          dname = [k for k in members if k.startswith('data.tar')][0]
+          open(os.path.join(out, 'data.tar'), 'wb').write(members[dname])
+          dataout = os.path.join(out, 'data')
+          os.makedirs(dataout, exist_ok=True)
+          with tarfile.open(os.path.join(out, 'data.tar'), 'r:*') as t:
+              for m in t.getmembers():
+                  print(' ', oct(m.mode), m.size, m.name)
+              t.extractall(dataout)
+          for root, _, files in os.walk(dataout):
+              for f in files:
+                  p = os.path.join(root, f)
+                  subprocess.run(['xcrun', 'lipo', '-info', p], check=False)
+                  subprocess.run(['xcrun', 'vtool', '-show-build', p], check=False)
+                  subprocess.run(['xcrun', 'codesign', '-dv', p], check=False)
+          PY
 
       - name: Upload
         uses: actions/upload-artifact@v4
