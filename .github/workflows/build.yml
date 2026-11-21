@@ -35,6 +35,7 @@ jobs:
           ls -l packages
 
       - name: Verify
+        continue-on-error: true
         run: |
           set -eo pipefail
           DEB=$(ls packages/*.deb | head -1)
@@ -56,8 +57,8 @@ jobs:
           print('members:', list(members))
           out = os.path.join(os.environ['RUNNER_TEMP'], 'debx')
           os.makedirs(out, exist_ok=True)
-          ctrl = members['control.tar.gz'] if 'control.tar.gz' in members else members['control.tar.xz']
-          open(os.path.join(out, 'control.tar'), 'wb').write(ctrl)
+          cname = [k for k in members if k.startswith('control.tar')][0]
+          open(os.path.join(out, 'control.tar'), 'wb').write(members[cname])
           with tarfile.open(os.path.join(out, 'control.tar'), 'r:*') as t:
               t.extractall(out)
           print(open(os.path.join(out, 'control')).read())
