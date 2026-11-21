@@ -8,8 +8,6 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Setup Theos
         run: |
@@ -20,18 +18,21 @@ jobs:
           SDKV="$(xcrun --sdk iphoneos --show-sdk-version)"
           echo "Xcode SDK: $SDK ($SDKV)"
           ln -sfn "$SDK" "$HOME/theos/sdks/iPhoneOS${SDKV}.sdk"
-          ls -l "$HOME/theos/sdks"
+          export HOMEBREW_NO_AUTO_UPDATE=1
+          if ! command -v ldid >/dev/null 2>&1; then brew install ldid; fi
+          ldid -v || true
 
       - name: Build arm64e
         run: |
           set -eo pipefail
-          export HOMEBREW_NO_AUTO_UPDATE=1
-          if ! command -v ldid >/dev/null 2>&1; then brew install ldid; fi
           export THEOS="$HOME/theos"
           export PATH="/opt/homebrew/bin:$THEOS/bin:$PATH"
-          ldid -v || true
           make clean || true
-          make package FINALPACKAGE=1 ARCHS=arm64e TARGET=iphone:clang:latest:14.0
+          make all FINALPACKAGE=1 ARCHS=arm64e TARGET=iphone:clang:latest:14.0 2>&1 | tail -30
+          ls -l .theos/obj
+          python3 tools/patch_dylib.py .theos/obj/BetterCCBrightness.dylib
+          ldid -S .theos/obj/BetterCCBrightness.dylib
+          python3 tools/pack.py .theos/obj/BetterCCBrightness.dylib
           ls -l packages
 
       - name: Verify
@@ -39,44 +40,8 @@ jobs:
         run: |
           set -eo pipefail
           DEB=$(ls packages/*.deb | head -1)
-          echo "DEB=$DEB"
-          shasum -a 256 "$GITHUB_WORKSPACE/$DEB"
-          python3 - "$GITHUB_WORKSPACE/$DEB" <<'PY'
-          import sys, io, os, tarfile, subprocess
-          deb = sys.argv[1]
-          data = open(deb, 'rb').read()
-          assert data[:8] == b'!<arch>\n', 'not an ar archive'
-          pos, members = 8, {}
-          while pos + 60 <= len(data):
-              hdr = data[pos:pos+60]
-              name = hdr[0:16].decode().strip()
-              size = int(hdr[48:58].decode().strip())
-              body = data[pos+60:pos+60+size]
-              members[name.rstrip('/')] = body
-              pos += 60 + size + (size & 1)
-          print('members:', list(members))
-          out = os.path.join(os.environ['RUNNER_TEMP'], 'debx')
-          os.makedirs(out, exist_ok=True)
-          cname = [k for k in members if k.startswith('control.tar')][0]
-          open(os.path.join(out, 'control.tar'), 'wb').write(members[cname])
-          with tarfile.open(os.path.join(out, 'control.tar'), 'r:*') as t:
-              t.extractall(out)
-          print(open(os.path.join(out, 'control')).read())
-          dname = [k for k in members if k.startswith('data.tar')][0]
-          open(os.path.join(out, 'data.tar'), 'wb').write(members[dname])
-          dataout = os.path.join(out, 'data')
-          os.makedirs(dataout, exist_ok=True)
-          with tarfile.open(os.path.join(out, 'data.tar'), 'r:*') as t:
-              for m in t.getmembers():
-                  print(' ', oct(m.mode), m.size, m.name)
-              t.extractall(dataout)
-          for root, _, files in os.walk(dataout):
-              for f in files:
-                  p = os.path.join(root, f)
-                  subprocess.run(['xcrun', 'lipo', '-info', p], check=False)
-                  subprocess.run(['xcrun', 'vtool', '-show-build', p], check=False)
-                  subprocess.run(['xcrun', 'codesign', '-dv', p], check=False)
-          PY
+          shasum -a 256 "$DEB"
+          python3 "$GITHUB_WORKSPACE/tools/verify.py" "$DEB"
 
       - name: Upload
         uses: actions/upload-artifact@v4
