@@ -1,0 +1,52 @@
+name: build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Theos
+        run: |
+          set -eo pipefail
+          git clone --recursive --depth=1 https://github.com/theos/theos.git "$HOME/theos"
+          mkdir -p "$HOME/theos/sdks"
+          curl -fsSL -o /tmp/sdks.zip https://github.com/theos/sdks/archive/refs/heads/master.zip
+          unzip -q /tmp/sdks.zip -d /tmp
+          cp -R /tmp/sdks-master/*.sdk "$HOME/theos/sdks/"
+          ls "$HOME/theos/sdks"
+
+      - name: Build arm64e
+        run: |
+          set -eo pipefail
+          export THEOS="$HOME/theos"
+          export PATH="$THEOS/bin:$PATH"
+          make clean || true
+          make package FINALPACKAGE=1 ARCHS=arm64e TARGET=iphone:clang:latest:13.0
+          ls -l packages
+
+      - name: Verify
+        run: |
+          set -eo pipefail
+          DEB=$(ls packages/*.deb | head -1)
+          echo "DEB=$DEB"
+          dpkg-deb -f "$DEB"
+          dpkg-deb -c "$DEB"
+          mkdir -p /tmp/x
+          dpkg-deb -x "$DEB" /tmp/x
+          DYLIB=$(find /tmp/x -name '*.dylib' | head -1)
+          file "$DYLIB"
+          xcrun lipo -info "$DYLIB"
+          xcrun vtool -show-build "$DYLIB" | head -20
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: betterccbrightness-arm64e
+          path: packages/*.deb
+          if-no-files-found: error

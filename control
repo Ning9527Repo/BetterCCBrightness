@@ -1,0 +1,10 @@
+Package: com.ning.betterccbrightness
+Name: BetterCCBrightness
+Version: 1.0.2-ning1
+Architecture: iphoneos-arm64e
+Description: Add more controls to the expanded brightness CC module (second-pass build: the two extra sliders now use the system Control Center material with a proper backdrop group)
+Depiction: https://level3tjg.me/repo/depictions/?p=com.level3tjg.betterccbrightness
+Maintainer: Ning&level3tjg
+Author: Ning&level3tjg
+Section: Tweaks
+Depends: mobilesubstrate (>= 0.9.5000), firmware (>= 13.0)
