@@ -1,12 +1,26 @@
 #!/usr/bin/env python3
-"""Package the patched tweak into a RootHide deb without dpkg/dark tooling."""
+"""Package the patched tweak into a deb for the requested architecture.
+
+usage: pack.py <dylib> <arm64e|arm64>
+
+  arm64e -> RootHide layout, .deb under packages/, Architecture iphoneos-arm64e
+  arm64  -> rootless layout under var/jb, Architecture iphoneos-arm64
+"""
 import io
 import os
 import sys
 import tarfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BASE = "./Library/MobileSubstrate/DynamicLibraries"
+
+LAYOUTS = {
+    "arm64e": ("./Library/MobileSubstrate/DynamicLibraries", "iphoneos-arm64e"),
+    "arm64": ("./var/jb/Library/MobileSubstrate/DynamicLibraries", "iphoneos-arm64"),
+}
+DIRS = {
+    "arm64e": ("./Library", "./Library/MobileSubstrate"),
+    "arm64": ("./var", "./var/jb", "./var/jb/Library", "./var/jb/Library/MobileSubstrate"),
+}
 
 
 def add_file(tf, name, data, mode=0o755):
@@ -38,27 +52,34 @@ def member(name, data):
     return hdr + data + (b"\n" if len(data) % 2 else b"")
 
 
-def main(dylib_path):
+def main(dylib_path, arch):
+    base, debarch = LAYOUTS[arch]
     dylib = open(dylib_path, "rb").read()
     plist = open(os.path.join(ROOT, "BetterCCBrightness.plist"), "rb").read()
-    control = open(os.path.join(ROOT, "control")).read()
-    control = "\n".join(
-        ("Installed-Size: %d" % (len(dylib) // 1024)) if line.startswith("Installed-Size") else line
-        for line in control.splitlines()
-    ) + "\n"
+    lines = []
+    for line in open(os.path.join(ROOT, "control")).read().splitlines():
+        if line.startswith("Installed-Size:"):
+            line = "Installed-Size: %d" % (len(dylib) // 1024)
+        if line.startswith("Architecture:"):
+            line = "Architecture: " + debarch
+        if line.strip():
+            lines.append(line)
+    control = "\n".join(lines) + "\n"
 
     cbuf = io.BytesIO()
     with tarfile.open(fileobj=cbuf, mode="w:gz", format=tarfile.GNU_FORMAT) as tf:
         add_file(tf, "./control", control.encode(), 0o644)
     dbuf = io.BytesIO()
     with tarfile.open(fileobj=dbuf, mode="w:gz", format=tarfile.GNU_FORMAT) as tf:
-        for d in ("./Library", "./Library/MobileSubstrate", BASE):
+        for d in DIRS[arch]:
             add_dir(tf, d)
-        add_file(tf, BASE + "/BetterCCBrightness.dylib", dylib)
-        add_file(tf, BASE + "/BetterCCBrightness.plist", plist, 0o644)
-    os.makedirs(os.path.join(ROOT, "packages"), exist_ok=True)
-    out = os.path.join(ROOT, "packages",
-                       "com.ning.betterccbrightness_1.0.2-ning1_iphoneos-arm64e.deb")
+        add_dir(tf, base)
+        add_file(tf, base + "/BetterCCBrightness.dylib", dylib)
+        add_file(tf, base + "/BetterCCBrightness.plist", plist, 0o644)
+
+    out_dir = os.path.join(ROOT, "packages")
+    os.makedirs(out_dir, exist_ok=True)
+    out = os.path.join(out_dir, "com.ning.betterccbrightness_1.0.2_%s.deb" % debarch)
     with open(out, "wb") as f:
         f.write(b"!<arch>\n")
         f.write(member("debian-binary", b"2.0\n"))
@@ -68,4 +89,4 @@ def main(dylib_path):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1])
+    main(sys.argv[1], sys.argv[2])

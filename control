@@ -1,8 +1,8 @@
 Package: com.ning.betterccbrightness
-Name: BetterCCBrightness
-Version: 1.0.2-ning1
+Name: 亮度增强
+Version: 1.0.2
 Architecture: iphoneos-arm64e
-Description: Add more controls to the expanded brightness CC module (second-pass build: the two extra sliders now use the system Control Center material with a proper backdrop group)
+Description: 为控制中心亮度模块扩展更多控制（二改版：两侧滑杆使用系统控制中心原生背景，长按亮度模块即可查看）
 Depiction: https://level3tjg.me/repo/depictions/?p=com.level3tjg.betterccbrightness
 Maintainer: Ning&level3tjg
 Author: Ning&level3tjg

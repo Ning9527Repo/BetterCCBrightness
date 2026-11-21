@@ -16,36 +16,43 @@ jobs:
           mkdir -p "$HOME/theos/sdks"
           SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
           SDKV="$(xcrun --sdk iphoneos --show-sdk-version)"
-          echo "Xcode SDK: $SDK ($SDKV)"
           ln -sfn "$SDK" "$HOME/theos/sdks/iPhoneOS${SDKV}.sdk"
           export HOMEBREW_NO_AUTO_UPDATE=1
           if ! command -v ldid >/dev/null 2>&1; then brew install ldid; fi
           ldid -v || true
 
-      - name: Build arm64e
+      - name: Build both architectures
         run: |
           set -eo pipefail
           export THEOS="$HOME/theos"
           export PATH="/opt/homebrew/bin:$THEOS/bin:$PATH"
           make clean || true
-          make all FINALPACKAGE=1 ARCHS=arm64e TARGET=iphone:clang:latest:14.0 2>&1 | tail -30
-          ls -l .theos/obj
-          python3 tools/patch_dylib.py .theos/obj/BetterCCBrightness.dylib
+
+          make all FINALPACKAGE=1 ARCHS=arm64e TARGET=iphone:clang:latest:14.0 2>&1 | tail -5
+          python3 tools/patch_dylib.py .theos/obj/BetterCCBrightness.dylib roothide
           ldid -S .theos/obj/BetterCCBrightness.dylib
-          python3 tools/pack.py .theos/obj/BetterCCBrightness.dylib
+          python3 tools/pack.py .theos/obj/BetterCCBrightness.dylib arm64e
+
+          make clean || true
+          make all FINALPACKAGE=1 ARCHS=arm64 TARGET=iphone:clang:latest:14.0 2>&1 | tail -5
+          python3 tools/patch_dylib.py .theos/obj/BetterCCBrightness.dylib rootless
+          ldid -S .theos/obj/BetterCCBrightness.dylib
+          python3 tools/pack.py .theos/obj/BetterCCBrightness.dylib arm64
+
           ls -l packages
 
       - name: Verify
         continue-on-error: true
         run: |
           set -eo pipefail
-          DEB=$(ls packages/*.deb | head -1)
-          shasum -a 256 "$DEB"
-          python3 "$GITHUB_WORKSPACE/tools/verify.py" "$DEB"
+          for d in packages/*.deb; do
+            shasum -a 256 "$d"
+            python3 "$GITHUB_WORKSPACE/tools/verify.py" "$d"
+          done
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: betterccbrightness-arm64e
+          name: betterccbrightness-both
           path: packages/*.deb
           if-no-files-found: error
