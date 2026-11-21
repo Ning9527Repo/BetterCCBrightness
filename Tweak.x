@@ -116,7 +116,10 @@ static void BCCBAdoptSystemBackdrop(MTMaterialView *materialView, UIView *contex
   [self.whitePointSliderView addTarget:self
                                 action:@selector(_whitePointSliderEditingDidEnd:)
                       forControlEvents:UIControlEventEditingDidEnd];
+  // The expanded module already draws its own frosted background; the extra
+  // dark material used to sit on top of it and turned the area flat black.
   self.whitePointMaterialView = [CCUIControlCenterMaterialView _darkMaterialView];
+  self.whitePointMaterialView.hidden = YES;
   [self.view addSubview:self.whitePointMaterialView];
   [self.view addSubview:self.whitePointSliderView];
 
@@ -148,6 +151,7 @@ static void BCCBAdoptSystemBackdrop(MTMaterialView *materialView, UIView *contex
                                   action:@selector(_nightShiftSliderEditingDidEnd:)
                         forControlEvents:UIControlEventEditingDidEnd];
     self.nightShiftMaterialView = [CCUIControlCenterMaterialView _darkMaterialView];
+    self.nightShiftMaterialView.hidden = YES;
     [self.view addSubview:self.nightShiftMaterialView];
     [self.view addSubview:self.nightShiftSliderView];
 
