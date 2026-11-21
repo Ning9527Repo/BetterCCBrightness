@@ -16,10 +16,11 @@ jobs:
           set -eo pipefail
           git clone --recursive --depth=1 https://github.com/theos/theos.git "$HOME/theos"
           mkdir -p "$HOME/theos/sdks"
-          curl -fsSL -o "$RUNNER_TEMP/sdks.zip" https://github.com/theos/sdks/archive/refs/heads/master.zip
-          ditto -x -k "$RUNNER_TEMP/sdks.zip" "$RUNNER_TEMP/sdks"
-          cp -R "$RUNNER_TEMP/sdks"/*.sdk "$HOME/theos/sdks/"
-          ls "$HOME/theos/sdks"
+          SDK="$(xcrun --sdk iphoneos --show-sdk-path)"
+          SDKV="$(xcrun --sdk iphoneos --show-sdk-version)"
+          echo "Xcode SDK: $SDK ($SDKV)"
+          ln -sfn "$SDK" "$HOME/theos/sdks/iPhoneOS${SDKV}.sdk"
+          ls -l "$HOME/theos/sdks"
 
       - name: Build arm64e
         run: |
